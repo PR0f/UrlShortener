@@ -2,9 +2,9 @@
 
 namespace UrlShortener.Model
 {
-    public class Database : DbContext
+    public class ApplicationDbContext : DbContext
     {
-        public Database(DbContextOptions options) : base(options)
+        public ApplicationDbContext(DbContextOptions options) : base(options)
         {
 
         }

@@ -1,6 +1,8 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
+using UrlShortener.Model;
 using ILogger = Serilog.ILogger;
 
 namespace UrlShortener.Controllers
@@ -10,17 +12,35 @@ namespace UrlShortener.Controllers
     public class ShortenerController : ControllerBase
     {
         private readonly ILogger _logger;
-        public ShortenerController(ILogger logger)
+        private readonly ApplicationDbContext _context;
+
+        public ShortenerController(ILogger logger, ApplicationDbContext context)
         {
             _logger = logger;
+            _context = context;
         }
 
         [HttpPost("ShortenUrl")]
-        public ActionResult<string> ShortenUrl(string url, DateTime? timeToLive = null)
+        public async Task<ActionResult<string>> ShortenUrl(string url, DateTime? timeToLive = null)
         {
-            _logger.Information("Test");
+            var shortUrl = String.Empty;
 
-            return "";
+            var shortener = new Shortener()
+            {
+                Url = url,
+                ShortUrl = shortUrl,
+                TimeToLive = timeToLive,
+            };
+            await _context.AddAsync<Shortener>(shortener);
+            var result = await _context.SaveChangesAsync();
+
+            if(result > 0)
+            {
+                _logger.Information($"Added new Url {url} as {shortUrl}, ttl to {timeToLive}");
+                return Ok(shortUrl);
+            }
+
+            return NotFound();
         }
 
         [HttpPost("ShortenUrlWithShortId")]

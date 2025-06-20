@@ -16,8 +16,12 @@ builder.Services.AddDbContext<Database>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("UrlShortener"));
 });
 
+
+
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration).CreateLogger();
+
+builder.Services.AddSingleton(Log.Logger);
 
 var app = builder.Build();
 

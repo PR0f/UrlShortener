@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using System;
+using System.ComponentModel.DataAnnotations;
 using UrlShortener.Model;
 
 using ILogger = Serilog.ILogger;
@@ -23,8 +24,8 @@ namespace UrlShortener.Controllers
             _context = context;
         }
 
-        [HttpPost("ShortenUrl")]
-        public async Task<ActionResult<string>> ShortenUrl(string url, DateTime? timeToLive = null)
+        [HttpPost("CreateUrl")]
+        public async Task<ActionResult<string>> CreateUrl([Required] string url, DateTime? timeToLive = null)
         {
             var shortUrl = await ShortUrlWithoutDuplication();
             
@@ -37,42 +38,73 @@ namespace UrlShortener.Controllers
             {
                 Url = url,
                 ShortUrl = shortUrl,
-                TimeToLive = timeToLive,
+                TimeToLive = timeToLive?.ToUniversalTime(),
             };
 
             return await CreateShortUrl(shortener);
         }
 
-        [HttpPost("ShortenUrlWithShortId")]
-        public ActionResult<string> ShortenUrlWithShortId(string url, string shortId, DateTime? timeToLive = null)
+        [HttpPost("CreateUrlById")]
+        public async Task<ActionResult<string>> CreateUrlById([Required]string url, [Required] string shortId, DateTime? timeToLive = null)
         {
-            //_logger.Information(GenShortUrl());
+            var elementExists = await _context.Shortener.FirstOrDefaultAsync<Shortener>(x => x.ShortUrl == shortId);
 
-            List<string> gen = new List<string>();
-            for (var i = 0; i < 1000000; i++)
+            if(elementExists != null)
             {
-                gen.Add(GenShortUrl());
+                _logger.Warning($"shortId is already used: {shortId}");
+                return NotFound();
             }
 
-            _logger.Information($"count list: {gen.Count()} vs {gen.Distinct().Count()}");
+            var shortener = new Shortener()
+            {
+                Url = url,
+                ShortUrl = shortId,
+                TimeToLive = timeToLive?.ToUniversalTime(),
+            };
 
-            return "";
+            return await CreateShortUrl(shortener);
         }
 
         [HttpGet("GetUrlById/{shortId}")]
-        public ActionResult<string> GetUrlById(string shortId)
+        public async Task<ActionResult<string>> GetUrlById(string shortId)
         {
             _logger.Information(shortId);
+            var shortener = await _context.Shortener.FirstOrDefaultAsync<Shortener>(_ => _.ShortUrl == shortId);
+            if (shortener == null)
+            {
+                return NotFound();
+            }
 
-            return "";
+            if (shortener.TimeToLive == null)
+            {
+                return Ok(shortener.Url);
+            }
+
+            DateTime ttl = shortener.TimeToLive.Value;
+            int diff = DateTime.Compare(ttl, DateTime.UtcNow);
+
+            if (diff < 0)
+            {
+                return NotFound();
+            }
+
+            return Ok(shortener.Url);
         }
 
         [HttpDelete("DeleteUrlById/{shortId}")]
-        public ActionResult<string> DeleteUrlById(string shortId)
+        public async Task<ActionResult<string>> DeleteUrlById(string shortId)
         {
-            _logger.Information(shortId);
+            var shortener = await _context.Shortener.FirstOrDefaultAsync<Shortener>(_ => _.ShortUrl == shortId);
+            if (shortener != null)
+            {
+                _context.Shortener.Remove(shortener);
+                var result = await _context.SaveChangesAsync();
+                _logger.Information($"Deleted Url: {shortener.Url}");
+                return Ok();
+            }
 
-            return "";
+            _logger.Information($"Tried to deleted shortId: {shortId} but element doesnt exist");
+            return NotFound();
         }
 
         #region Helpers
@@ -108,7 +140,7 @@ namespace UrlShortener.Controllers
             for (int i = 0; i < nextGenAttempts; i++)
             {
                 var genUrl = GenShortUrl();
-                var elementExists = await _context.Shortener.FirstOrDefaultAsync<Shortener>(x => x.ShortUrl == genUrl);
+                var elementExists = await _context.Shortener.FirstOrDefaultAsync<Shortener>(_ => _.ShortUrl == genUrl);
 
                 if (elementExists == null)
                 {
